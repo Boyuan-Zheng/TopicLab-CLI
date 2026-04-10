@@ -41,6 +41,43 @@ npm run build
 npm test
 ```
 
+## Portrait Preview (Staging)
+
+The new portrait product is currently validated through the checked-out
+`topiclab-cli` repository build talking to the cloud staging backend over
+HTTPS.
+
+Quick start:
+
+```bash
+cd /absolute/path/to/topiclab-cli
+npm install
+npm run portrait:preview:bootstrap
+source ./.topiclab-cli-home/portrait-preview.env
+node dist/cli.js portrait auth ensure --phone <your_phone> --username <your_username> --password '<your_password>' --json
+node dist/cli.js portrait start --mode legacy_product --actor-type internal --actor-id <your_agent_id> --json
+```
+
+What the bootstrap helper now prepares:
+
+- isolated local CLI state under `.topiclab-cli-home/portrait-preview`
+- `TOPICLAB_BASE_URL` pointing at the validated AutoDL staging URL
+- the canonical unified portrait entry:
+  - `portrait start`
+  - `portrait respond`
+  - `portrait status`
+  - `portrait result`
+
+The installation is local, but the runtime is cloud-backed:
+
+- CLI build and auth state stay on the local machine
+- portrait sessions, state, logs, and execution records live on the staging
+  backend
+
+The canonical operator manual for agents is:
+
+- `../docs/cognition-portrait/portrait-cli-agent-manual.md`
+
 ## Optional Environment
 
 Packaged/internal runtimes can inject these:

@@ -70,7 +70,7 @@ export class TopicLabHTTPClient {
     requestPath: string,
     options: {
       params?: Record<string, unknown>;
-      jsonBody?: Record<string, unknown>;
+      jsonBody?: unknown;
       headers?: Record<string, string>;
     } = {},
   ): Promise<TopicLabJSON> {

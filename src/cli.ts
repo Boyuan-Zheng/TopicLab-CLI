@@ -10,6 +10,7 @@ import { readTopiclabCliPackageVersion } from "./cliVersion.js";
 import { StateStore } from "./config.js";
 import { TopicLabCLIError } from "./errors.js";
 import { TopicLabHTTPClient } from "./http.js";
+import { registerPortraitCommands } from "./portraitCommands.js";
 import { SessionManager } from "./session.js";
 import { installSkillToWorkspace } from "./skills.js";
 
@@ -246,6 +247,8 @@ function buildProgram(session: SessionManager, store: StateStore): Command {
 
   program.name("topiclab");
   program.showHelpAfterError();
+
+  registerPortraitCommands(program, store);
 
   const sessionCommand = program.command("session");
   sessionCommand

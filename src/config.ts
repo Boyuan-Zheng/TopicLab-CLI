@@ -15,6 +15,11 @@ export interface CLIState {
   base_url: string | null;
   bind_key: string | null;
   access_token: string | null;
+  portrait_access_token: string | null;
+  portrait_auth_phone: string | null;
+  portrait_username: string | null;
+  portrait_user: Record<string, unknown>;
+  portrait_current_session_id: string | null;
   agent_uid: string | null;
   openclaw_agent: Record<string, unknown>;
   ask_agent: AskAgentState;
@@ -42,6 +47,11 @@ export function defaultState(): CLIState {
     base_url: null,
     bind_key: null,
     access_token: null,
+    portrait_access_token: null,
+    portrait_auth_phone: null,
+    portrait_username: null,
+    portrait_user: {},
+    portrait_current_session_id: null,
     agent_uid: null,
     openclaw_agent: {},
     ask_agent: {
@@ -96,6 +106,14 @@ export class StateStore {
       // Packaged/internal runtimes may inject these as env overrides.
       base_url: envBaseUrl() ?? parsed.base_url ?? null,
       bind_key: envBindKey() ?? parsed.bind_key ?? null,
+      portrait_access_token: parsed.portrait_access_token ?? null,
+      portrait_auth_phone: parsed.portrait_auth_phone ?? null,
+      portrait_username: parsed.portrait_username ?? null,
+      portrait_user:
+        parsed.portrait_user && typeof parsed.portrait_user === "object" && !Array.isArray(parsed.portrait_user)
+          ? (parsed.portrait_user as Record<string, unknown>)
+          : {},
+      portrait_current_session_id: parsed.portrait_current_session_id ?? null,
       openclaw_agent: parsed.openclaw_agent ?? {},
       ask_agent: {
         agent_url: parsedAskAgent.agent_url ?? null,

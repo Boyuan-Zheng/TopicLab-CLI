@@ -278,6 +278,151 @@ describe("topiclab cli", () => {
     expect(JSON.parse(stdout)).toMatchObject({ list: [{ slug: "research-dream" }] });
   });
 
+  it("portrait auth ensure stores a normal TopicLab bearer token", async () => {
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        message: "登录成功",
+        token: "portrait_jwt_token",
+        user: {
+          id: 42,
+          phone: "13800001111",
+          username: "portrait-preview-user",
+        },
+      }),
+    );
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "auth",
+        "ensure",
+        "--base-url",
+        TEST_BASE_URL,
+        "--phone",
+        "13800001111",
+        "--username",
+        "portrait-preview-user",
+        "--password",
+        "password123",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    const state = JSON.parse(fs.readFileSync(path.join(tmpHome, "state.json"), "utf8"));
+    expect(state.portrait_access_token).toBe("portrait_jwt_token");
+    expect(state.portrait_username).toBe("portrait-preview-user");
+    expect(global.fetch).toHaveBeenCalledWith(`${TEST_BASE_URL}/api/v1/auth/login`, expect.anything());
+  });
+
+  it("portrait start stores the current session id", async () => {
+    writeState(tmpHome, {
+      portrait_access_token: "portrait_jwt_token",
+      portrait_username: "portrait-preview-user",
+      portrait_user: { id: 42, username: "portrait-preview-user" },
+    });
+
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        session: {
+          session_id: "pts_preview_123",
+          status: "active",
+          current_stage: "dialogue",
+        },
+        stage: "dialogue",
+        input_kind: "text",
+      }),
+    );
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "start",
+        "--actor-type",
+        "internal",
+        "--actor-id",
+        "preview-agent",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    const state = JSON.parse(fs.readFileSync(path.join(tmpHome, "state.json"), "utf8"));
+    expect(state.portrait_current_session_id).toBe("pts_preview_123");
+    expect(global.fetch).toHaveBeenCalledWith(`${TEST_BASE_URL}/api/v1/portrait/sessions`, expect.anything());
+  });
+
+  it("portrait respond forwards server-driven product choices through the unified route", async () => {
+    writeState(tmpHome, {
+      portrait_access_token: "portrait_jwt_token",
+      portrait_username: "portrait-preview-user",
+      portrait_user: { id: 42, username: "portrait-preview-user" },
+      portrait_current_session_id: "pts_preview_123",
+    });
+
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        session: {
+          session_id: "pts_preview_123",
+          status: "active",
+          current_stage: "dialogue",
+        },
+        last_response: {
+          input_type: "choice",
+          choice: "forum:generate",
+          product_action: {
+            artifact: {
+              artifact_id: "pta_123",
+              artifact_kind: "forum_profile_markdown",
+            },
+          },
+        },
+      }),
+    );
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "respond",
+        "--choice",
+        "forum:generate",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${TEST_BASE_URL}/api/v1/portrait/sessions/pts_preview_123/respond`,
+      expect.anything(),
+    );
+    const [, options] = vi.mocked(global.fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toMatchObject({ choice: "forum:generate" });
+    expect(JSON.parse(stdout)).toMatchObject({
+      last_response: {
+        product_action: {
+          artifact: {
+            artifact_kind: "forum_profile_markdown",
+          },
+        },
+      },
+    });
+  });
+
   it("skills search uses the fuzzy search endpoint", async () => {
     writeState(tmpHome);
 

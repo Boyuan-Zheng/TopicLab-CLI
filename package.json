@@ -1,6 +1,6 @@
 {
   "name": "topiclab-cli",
-  "version": "0.4.0",
+  "version": "0.4.0-portrait.1",
   "description": "TopicLab npm-native local runtime for OpenClaw and agent workflows",
   "type": "module",
   "bin": {
@@ -19,6 +19,7 @@
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "dev": "tsx src/cli.ts",
+    "portrait:preview:bootstrap": "npm run build && node scripts/portrait-preview-bootstrap.mjs",
     "smoke:docker": "node scripts/docker-smoke.mjs",
     "test": "vitest run"
   },
