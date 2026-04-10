@@ -109,18 +109,29 @@ function resolveExportContent(kind: string, payload: Record<string, unknown>): s
   return null;
 }
 
-function defaultBinaryOutput(kind: string): string {
+function sanitizeOutputFileName(fileName: string | undefined, fallback: string): string {
+  const trimmed = (fileName ?? "").trim();
+  const basename = path.basename(trimmed || fallback);
+  const sanitized = basename.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized || fallback;
+}
+
+function defaultBinaryOutput(kind: string, suggestedName?: string): string {
   if (kind === "profile-pdf") {
-    return path.join(process.cwd(), "portrait-profile.pdf");
+    return path.join(process.cwd(), sanitizeOutputFileName(suggestedName, "portrait-profile.pdf"));
   }
   if (kind === "profile-image") {
-    return path.join(process.cwd(), "portrait-profile.png");
+    return path.join(process.cwd(), sanitizeOutputFileName(suggestedName, "portrait-profile.png"));
   }
   throw new TopicLabCLIError("Unsupported export kind", {
     code: "unsupported_portrait_export_kind",
     exitCode: 2,
     detail: kind,
   });
+}
+
+function encodePathSegment(value: string): string {
+  return encodeURIComponent(value.trim());
 }
 
 function currentStoredSessionId(portrait: PortraitSessionManager): string | undefined {
@@ -315,7 +326,7 @@ export function registerPortraitCommands(program: Command, store: StateStore): v
               ? "/api/v1/portrait/export/profile-pdf"
               : "/api/v1/portrait/export/profile-image";
           const binary = await portrait.downloadBinary(requestPath, { params });
-          const outputPath = path.resolve(options.output ?? defaultBinaryOutput(options.kind));
+          const outputPath = path.resolve(options.output ?? defaultBinaryOutput(options.kind, binary.fileName ?? undefined));
           fs.mkdirSync(path.dirname(outputPath), { recursive: true });
           fs.writeFileSync(outputPath, binary.buffer);
           process.exit(
@@ -323,6 +334,8 @@ export function registerPortraitCommands(program: Command, store: StateStore): v
               {
                 ok: true,
                 kind: options.kind,
+                artifact_id: binary.artifactId,
+                file_name: binary.fileName,
                 output_path: outputPath,
                 content_type: binary.contentType,
                 byte_length: binary.buffer.length,
@@ -350,4 +363,58 @@ export function registerPortraitCommands(program: Command, store: StateStore): v
         process.exit(emit(payload, options.json ?? false));
       },
     );
+
+  const artifactsCommand = portraitCommand.command("artifacts");
+
+  artifactsCommand
+    .command("list")
+    .option("--kind <kind>")
+    .option("--limit <number>", "limit", "20")
+    .option("--json")
+    .action(async (options: { kind?: string; limit: string; json?: boolean }) => {
+      const payload = await portrait.request("GET", "/api/v1/portrait/artifacts", {
+        params: {
+          kind: options.kind,
+          limit: Number(options.limit),
+        },
+      });
+      process.exit(emit(payload, options.json ?? false));
+    });
+
+  artifactsCommand
+    .command("get")
+    .argument("<artifact-id>")
+    .option("--json")
+    .action(async (artifactId: string, options: { json?: boolean }) => {
+      const payload = await portrait.request("GET", `/api/v1/portrait/artifacts/${encodePathSegment(artifactId)}`);
+      process.exit(emit(payload, options.json ?? false));
+    });
+
+  artifactsCommand
+    .command("download")
+    .argument("<artifact-id>")
+    .option("--output <path>")
+    .option("--json")
+    .action(async (artifactId: string, options: { output?: string; json?: boolean }) => {
+      const binary = await portrait.downloadBinary(`/api/v1/portrait/artifacts/${encodePathSegment(artifactId)}/download`);
+      const outputPath = path.resolve(
+        options.output ??
+          path.join(process.cwd(), sanitizeOutputFileName(binary.fileName ?? undefined, `${artifactId.trim() || "portrait-artifact"}.bin`)),
+      );
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, binary.buffer);
+      process.exit(
+        emit(
+          {
+            ok: true,
+            artifact_id: binary.artifactId ?? artifactId.trim(),
+            file_name: binary.fileName,
+            output_path: outputPath,
+            content_type: binary.contentType,
+            byte_length: binary.buffer.length,
+          },
+          options.json ?? false,
+        ),
+      );
+    });
 }

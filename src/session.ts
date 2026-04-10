@@ -193,7 +193,7 @@ export class SessionManager {
       params?: Record<string, unknown>;
       headers?: Record<string, string>;
     } = {},
-  ): Promise<{ buffer: Buffer; contentType: string | null }> {
+  ): Promise<{ buffer: Buffer; contentType: string | null; fileName: string | null; artifactId: string | null }> {
     try {
       const client = await this.authedClient();
       return await client.downloadBinary(requestPath, options);

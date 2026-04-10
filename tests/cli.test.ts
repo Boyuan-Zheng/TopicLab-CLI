@@ -1226,6 +1226,116 @@ describe("topiclab cli", () => {
     });
   });
 
+  it("portrait export downloads cloud pdf artifacts to a local file", async () => {
+    writeState(tmpHome, {
+      portrait_access_token: "portrait_token",
+      portrait_current_session_id: "pts_export_123",
+    });
+
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("fake-pdf-bytes"), {
+        status: 200,
+        headers: {
+          "content-type": "application/pdf",
+          "content-disposition": 'attachment; filename="profile.pdf"',
+          "x-portrait-artifact-id": "par_pdf_123",
+        },
+      }),
+    );
+
+    await expect(main(["node", "topiclab", "portrait", "export", "--kind", "profile-pdf", "--json"])).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    const payload = JSON.parse(stdout);
+    expect(payload).toMatchObject({
+      ok: true,
+      kind: "profile-pdf",
+      artifact_id: "par_pdf_123",
+      file_name: "profile.pdf",
+      content_type: "application/pdf",
+      byte_length: 14,
+      source_session_id: "pts_export_123",
+    });
+    expect(fs.readFileSync(payload.output_path, "utf8")).toBe("fake-pdf-bytes");
+  });
+
+  it("portrait artifacts download retrieves a persisted binary artifact", async () => {
+    writeState(tmpHome, {
+      portrait_access_token: "portrait_token",
+    });
+
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("fake-png-bytes"), {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "content-disposition": 'attachment; filename="portrait.png"',
+          "x-portrait-artifact-id": "par_png_123",
+        },
+      }),
+    );
+
+    await expect(
+      main(["node", "topiclab", "portrait", "artifacts", "download", "par_png_123", "--json"]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    const payload = JSON.parse(stdout);
+    expect(payload).toMatchObject({
+      ok: true,
+      artifact_id: "par_png_123",
+      file_name: "portrait.png",
+      content_type: "image/png",
+      byte_length: 14,
+    });
+    expect(fs.readFileSync(payload.output_path, "utf8")).toBe("fake-png-bytes");
+  });
+
+  it("portrait export preserves structured backend error detail for binary failures", async () => {
+    writeState(tmpHome, {
+      portrait_access_token: "portrait_token",
+      portrait_current_session_id: "pts_export_503",
+    });
+
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: {
+            error: "binary_export_unavailable",
+            reason: "No browser runtime found for PDF/image export",
+          },
+        }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      main(["node", "topiclab", "portrait", "export", "--kind", "profile-pdf", "--json"]),
+    ).rejects.toThrow("exit:2");
+
+    expect(exitMock).toHaveBeenCalledWith(2);
+    expect(JSON.parse(stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: "http_error",
+        status_code: 503,
+        detail: {
+          error: "binary_export_unavailable",
+          reason: "No browser runtime found for PDF/image export",
+        },
+      },
+    });
+  });
+
   it("env overrides persisted routing and bind state for packaged runtimes", async () => {
     fs.writeFileSync(
       path.join(tmpHome, "state.json"),

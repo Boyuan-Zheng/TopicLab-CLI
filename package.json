@@ -10,7 +10,8 @@
     "dist",
     "README.md",
     "CHANGELOG.md",
-    "docs"
+    "docs",
+    "skills"
   ],
   "engines": {
     "node": ">=18"

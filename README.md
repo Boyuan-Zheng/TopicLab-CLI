@@ -74,9 +74,9 @@ The installation is local, but the runtime is cloud-backed:
 - portrait sessions, state, logs, and execution records live on the staging
   backend
 
-The canonical operator manual for agents is:
+The single canonical in-repo skill for agents is:
 
-- `../docs/cognition-portrait/portrait-cli-agent-manual.md`
+- `./skills/topiclab-portrait-cli-test-agent/SKILL.md`
 
 ## Optional Environment
 

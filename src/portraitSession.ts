@@ -201,7 +201,7 @@ export class PortraitSessionManager {
     options: {
       params?: Record<string, unknown>;
     } = {},
-  ): Promise<{ buffer: Buffer; contentType: string | null }> {
+  ): Promise<{ buffer: Buffer; contentType: string | null; fileName: string | null; artifactId: string | null }> {
     try {
       return await (await this.authedClient()).downloadBinary(requestPath, options);
     } catch (error) {

@@ -24,6 +24,40 @@ function guessMimeType(filePath: string): string {
   return MIME_TYPE_BY_EXTENSION[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
+function parseContentDispositionFilename(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  const utf8Match = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+  const quotedMatch = raw.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1].trim();
+  }
+  const plainMatch = raw.match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim() ?? null;
+}
+
+function normalizeErrorDetail(detail: unknown): unknown {
+  if (detail === undefined || detail === null) {
+    return detail ?? null;
+  }
+  if (typeof detail === "string") {
+    return detail;
+  }
+  try {
+    return JSON.parse(JSON.stringify(detail));
+  } catch {
+    return String(detail);
+  }
+}
+
 export class TopicLabHTTPClient {
   baseUrl: string;
   accessToken: string | null;
@@ -159,7 +193,7 @@ export class TopicLabHTTPClient {
       params?: Record<string, unknown>;
       headers?: Record<string, string>;
     } = {},
-  ): Promise<{ buffer: Buffer; contentType: string | null }> {
+  ): Promise<{ buffer: Buffer; contentType: string | null; fileName: string | null; artifactId: string | null }> {
     let response: Response;
     try {
       response = await fetch(this.buildUrl(requestPath, options.params), {
@@ -192,7 +226,7 @@ export class TopicLabHTTPClient {
         code: this.errorCodeForStatus(response.status),
         exitCode: 2,
         statusCode: response.status,
-        detail: detail === undefined ? undefined : String(detail),
+        detail: normalizeErrorDetail(detail),
       });
     }
 
@@ -200,6 +234,8 @@ export class TopicLabHTTPClient {
     return {
       buffer: Buffer.from(arrayBuffer),
       contentType: response.headers.get("content-type"),
+      fileName: parseContentDispositionFilename(response.headers.get("content-disposition")),
+      artifactId: response.headers.get("x-portrait-artifact-id"),
     };
   }
 
@@ -272,7 +308,7 @@ export class TopicLabHTTPClient {
         code: this.errorCodeForStatus(response.status),
         exitCode: 2,
         statusCode: response.status,
-        detail,
+        detail: normalizeErrorDetail(detail),
       });
     }
 

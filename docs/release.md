@@ -81,5 +81,5 @@ npm install -g topiclab-cli@0.4.0-portrait.1 --registry=https://registry.npmmirr
 If the preview package has not yet been published, testers should fall back to
 the source-install path documented in:
 
-- `../../docs/cognition-portrait/portrait-cli-agent-manual.md`
+- `../skills/topiclab-portrait-cli-test-agent/SKILL.md`
 - `../../docs/cognition-portrait/portrait-preview-release-plan.md`
