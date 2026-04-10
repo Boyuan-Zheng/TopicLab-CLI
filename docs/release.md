@@ -37,6 +37,23 @@ npm test
 npm publish --tag portrait
 ```
 
+2026-04-11 preview verification on the maintainer machine:
+
+- `npm run build`
+- `npm test`
+- `npm publish --tag portrait --dry-run`
+- `npm pack`
+- `npm install -g ./topiclab-cli-0.4.0-portrait.1.tgz --prefix /tmp/topiclab-cli-preview-install`
+- `/tmp/topiclab-cli-preview-install/bin/topiclab --help`
+
+Observed result:
+
+- the preview tarball was produced successfully
+- the package could be installed into a clean temporary prefix
+- the installed global command `topiclab` executed successfully
+- actual public publish is still blocked until the maintainer logs in to npm on
+  the publishing machine
+
 After publish, verify:
 
 ```bash
