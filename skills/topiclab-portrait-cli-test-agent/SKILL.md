@@ -91,7 +91,7 @@ published and confirmed available.
 Pinned preview refs:
 
 - TopicLab-CLI source tag:
-  - `topiclab-cli-v0.4.0-portrait.1`
+  - `topiclab-cli-v0.4.0-portrait.2`
 
 ## If You Cloned The Main TopicLab Repo
 
