@@ -2,6 +2,16 @@ import { CLIState, StateStore } from "./config.js";
 import { TopicLabCLIError } from "./errors.js";
 import { normalizeBaseUrl, TopicLabHTTPClient, TopicLabJSON } from "./http.js";
 
+type AuthPayload = {
+  token: string;
+  user: Record<string, unknown>;
+};
+
+type AutoRegisterResult =
+  | { status: "registered"; payload: AuthPayload }
+  | { status: "already_exists" }
+  | { status: "not_allowed" };
+
 function asObject(payload: TopicLabJSON, code: string): Record<string, unknown> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new TopicLabCLIError("Expected JSON object response from TopicLab", {
@@ -21,6 +31,43 @@ export class PortraitSessionManager {
 
   loadState(): CLIState {
     return this.store.load();
+  }
+
+  private detailText(detail: unknown): string {
+    if (typeof detail === "string") {
+      return detail.trim();
+    }
+    if (detail && typeof detail === "object") {
+      try {
+        return JSON.stringify(detail, null, 2);
+      } catch {
+        return String(detail);
+      }
+    }
+    return String(detail ?? "");
+  }
+
+  private isAlreadyRegisteredError(error: TopicLabCLIError): boolean {
+    if (error.statusCode !== 400) {
+      return false;
+    }
+    return this.detailText(error.detail).includes("该手机号已注册");
+  }
+
+  private parseAuthPayload(payload: TopicLabJSON, code: string): AuthPayload {
+    const authPayload = asObject(payload, code);
+    const token = typeof authPayload.token === "string" ? authPayload.token.trim() : "";
+    if (!token) {
+      throw new TopicLabCLIError("TopicLab auth succeeded but returned no token", {
+        code: "missing_auth_token",
+        exitCode: 4,
+      });
+    }
+    const user =
+      authPayload.user && typeof authPayload.user === "object" && !Array.isArray(authPayload.user)
+        ? (authPayload.user as Record<string, unknown>)
+        : {};
+    return { token, user };
   }
 
   private saveState(state: CLIState): void {
@@ -59,31 +106,59 @@ export class PortraitSessionManager {
       username: string;
       password: string;
     },
-  ): Promise<boolean> {
+  ): Promise<AutoRegisterResult> {
     const configPayload = asObject(
       await client.requestJson("GET", "/api/v1/auth/register-config"),
       "invalid_register_config",
     );
     if (configPayload.registration_requires_sms === true) {
-      return false;
+      return { status: "not_allowed" };
     }
 
     try {
-      await client.requestJson("POST", "/api/v1/auth/register", {
-        jsonBody: {
-          phone: options.phone,
-          username: options.username,
-          password: options.password,
-          code: "",
-        },
-      });
-      return true;
+      const payload = this.parseAuthPayload(
+        await client.requestJson("POST", "/api/v1/auth/register", {
+          jsonBody: {
+            phone: options.phone,
+            username: options.username,
+            password: options.password,
+            code: "",
+          },
+        }),
+        "invalid_auth_payload",
+      );
+      return { status: "registered", payload };
     } catch (error) {
-      if (!(error instanceof TopicLabCLIError) || error.statusCode !== 400) {
+      if (!(error instanceof TopicLabCLIError)) {
         throw error;
       }
-      return true;
+      if (this.isAlreadyRegisteredError(error)) {
+        return { status: "already_exists" };
+      }
+      throw error;
     }
+  }
+
+  private persistAuth(
+    state: CLIState,
+    options: {
+      phone: string;
+      username?: string;
+    },
+    payload: AuthPayload,
+  ): Record<string, unknown> {
+    state.portrait_access_token = payload.token;
+    state.portrait_auth_phone = options.phone;
+    state.portrait_username =
+      options.username?.trim() ||
+      (typeof payload.user.username === "string" && payload.user.username.trim() ? payload.user.username.trim() : state.portrait_username);
+    state.portrait_user = payload.user;
+    this.saveState(state);
+
+    return {
+      user: payload.user,
+      last_refreshed_at: state.last_refreshed_at,
+    };
   }
 
   async ensureAuth(options: {
@@ -100,9 +175,8 @@ export class PortraitSessionManager {
     const client = new TopicLabHTTPClient(baseUrl);
 
     let registrationAttempted = false;
-    let loginPayload: Record<string, unknown>;
     try {
-      loginPayload = asObject(
+      const auth = this.parseAuthPayload(
         await client.requestJson("POST", "/api/v1/auth/login", {
           jsonBody: {
             phone: options.phone,
@@ -111,16 +185,42 @@ export class PortraitSessionManager {
         }),
         "invalid_auth_payload",
       );
+      const saved = this.persistAuth(state, { phone: options.phone, username: options.username }, auth);
+      return {
+        ok: true,
+        base_url: baseUrl,
+        registration_attempted: false,
+        auth_action: "login",
+        ...saved,
+      };
     } catch (error) {
       if (!(error instanceof TopicLabCLIError) || error.statusCode !== 400 || !options.username?.trim()) {
         throw error;
       }
-      registrationAttempted = await this.tryAutoRegister(client, {
+
+      const registerResult = await this.tryAutoRegister(client, {
         phone: options.phone,
         username: options.username.trim(),
         password: options.password,
       });
-      loginPayload = asObject(
+      registrationAttempted = registerResult.status !== "not_allowed";
+
+      if (registerResult.status === "registered") {
+        const saved = this.persistAuth(state, { phone: options.phone, username: options.username }, registerResult.payload);
+        return {
+          ok: true,
+          base_url: baseUrl,
+          registration_attempted: registrationAttempted,
+          auth_action: "register",
+          ...saved,
+        };
+      }
+
+      if (registerResult.status === "not_allowed") {
+        throw error;
+      }
+
+      const auth = this.parseAuthPayload(
         await client.requestJson("POST", "/api/v1/auth/login", {
           jsonBody: {
             phone: options.phone,
@@ -129,36 +229,15 @@ export class PortraitSessionManager {
         }),
         "invalid_auth_payload",
       );
+      const saved = this.persistAuth(state, { phone: options.phone, username: options.username }, auth);
+      return {
+        ok: true,
+        base_url: baseUrl,
+        registration_attempted: registrationAttempted,
+        auth_action: "login_existing_account",
+        ...saved,
+      };
     }
-
-    const token = typeof loginPayload.token === "string" ? loginPayload.token.trim() : "";
-    if (!token) {
-      throw new TopicLabCLIError("TopicLab auth succeeded but returned no token", {
-        code: "missing_auth_token",
-        exitCode: 4,
-      });
-    }
-
-    const user =
-      loginPayload.user && typeof loginPayload.user === "object" && !Array.isArray(loginPayload.user)
-        ? (loginPayload.user as Record<string, unknown>)
-        : {};
-
-    state.portrait_access_token = token;
-    state.portrait_auth_phone = options.phone;
-    state.portrait_username =
-      options.username?.trim() ||
-      (typeof user.username === "string" && user.username.trim() ? user.username.trim() : state.portrait_username);
-    state.portrait_user = user;
-    this.saveState(state);
-
-    return {
-      ok: true,
-      base_url: baseUrl,
-      registration_attempted: registrationAttempted,
-      user,
-      last_refreshed_at: state.last_refreshed_at,
-    };
   }
 
   async authedClient(): Promise<TopicLabHTTPClient> {

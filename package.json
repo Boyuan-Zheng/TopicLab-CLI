@@ -21,6 +21,7 @@
     "clean": "rm -rf dist",
     "dev": "tsx src/cli.ts",
     "portrait:preview:bootstrap": "npm run build && node scripts/portrait-preview-bootstrap.mjs",
+    "smoke:portrait:staging": "npm run build && node scripts/portrait-staging-smoke.mjs",
     "smoke:docker": "node scripts/docker-smoke.mjs",
     "test": "vitest run"
   },

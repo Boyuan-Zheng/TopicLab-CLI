@@ -6,6 +6,8 @@ const homeRoot = path.join(repoRoot, ".topiclab-cli-home");
 const stateHome = path.join(homeRoot, "portrait-preview");
 const envPath = path.join(homeRoot, "portrait-preview.env");
 const cliPath = path.join(repoRoot, "dist", "cli.js");
+const skillUrl =
+  "https://github.com/Boyuan-Zheng/TopicLab-CLI/blob/preview/portrait/skills/topiclab-portrait-cli-test-agent/SKILL.md";
 const stagingBaseUrl =
   process.env.TOPICLAB_PORTRAIT_PREVIEW_BASE_URL?.trim() ||
   "https://u394499-8634-23d284fb.westb.seetacloud.com:8443";
@@ -26,11 +28,15 @@ process.stdout.write(
     `env_file=${envPath}`,
     `cli=${cliPath}`,
     `base_url=${stagingBaseUrl}`,
+    `skill=${skillUrl}`,
     "",
     "next steps:",
     `source "${envPath}"`,
+    `# canonical public agent manual: ${skillUrl}`,
     `node "${cliPath}" portrait --help`,
     `node "${cliPath}" portrait auth ensure --phone <your_phone> --username <your_username> --password '<your_password>' --json`,
     `node "${cliPath}" portrait start --mode legacy_product --actor-type internal --actor-id <your_agent_id> --json`,
+    `# read the returned ai_memory prompt, answer it as the current agent, then run:`,
+    `node "${cliPath}" portrait respond --external-text-file ./ai-memory-reply.md --json`,
   ].join("\n") + "\n",
 );

@@ -318,6 +318,133 @@ describe("topiclab cli", () => {
     expect(state.portrait_access_token).toBe("portrait_jwt_token");
     expect(state.portrait_username).toBe("portrait-preview-user");
     expect(global.fetch).toHaveBeenCalledWith(`${TEST_BASE_URL}/api/v1/auth/login`, expect.anything());
+    expect(JSON.parse(stdout)).toMatchObject({ auth_action: "login", registration_attempted: false });
+  });
+
+  it("portrait auth ensure persists register payload directly when auto-register succeeds", async () => {
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: "手机号或密码错误" }, { status: 400 }))
+      .mockResolvedValueOnce(jsonResponse({ registration_requires_sms: false }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          message: "注册成功",
+          token: "portrait_registered_token",
+          user: {
+            id: 43,
+            phone: "13800002222",
+            username: "portrait-new-user",
+          },
+        }),
+      );
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "auth",
+        "ensure",
+        "--base-url",
+        TEST_BASE_URL,
+        "--phone",
+        "13800002222",
+        "--username",
+        "portrait-new-user",
+        "--password",
+        "password123",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    const state = JSON.parse(fs.readFileSync(path.join(tmpHome, "state.json"), "utf8"));
+    expect(state.portrait_access_token).toBe("portrait_registered_token");
+    expect(state.portrait_username).toBe("portrait-new-user");
+    expect(vi.mocked(global.fetch).mock.calls).toHaveLength(3);
+    expect(JSON.parse(stdout)).toMatchObject({ auth_action: "register", registration_attempted: true });
+  });
+
+  it("portrait auth ensure retries login when the phone is already registered", async () => {
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: "手机号或密码错误" }, { status: 400 }))
+      .mockResolvedValueOnce(jsonResponse({ registration_requires_sms: false }))
+      .mockResolvedValueOnce(jsonResponse({ detail: "该手机号已注册" }, { status: 400 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          message: "登录成功",
+          token: "portrait_existing_token",
+          user: {
+            id: 44,
+            phone: "13800003333",
+            username: "portrait-existing-user",
+          },
+        }),
+      );
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "auth",
+        "ensure",
+        "--base-url",
+        TEST_BASE_URL,
+        "--phone",
+        "13800003333",
+        "--username",
+        "portrait-existing-user",
+        "--password",
+        "password123",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    const state = JSON.parse(fs.readFileSync(path.join(tmpHome, "state.json"), "utf8"));
+    expect(state.portrait_access_token).toBe("portrait_existing_token");
+    expect(vi.mocked(global.fetch).mock.calls).toHaveLength(4);
+    expect(JSON.parse(stdout)).toMatchObject({ auth_action: "login_existing_account", registration_attempted: true });
+  });
+
+  it("portrait auth ensure does not auto-register when staging requires sms registration", async () => {
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: "手机号或密码错误" }, { status: 400 }))
+      .mockResolvedValueOnce(jsonResponse({ registration_requires_sms: true }));
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "auth",
+        "ensure",
+        "--base-url",
+        TEST_BASE_URL,
+        "--phone",
+        "13800004444",
+        "--username",
+        "portrait-sms-user",
+        "--password",
+        "password123",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:2");
+
+    expect(exitMock).toHaveBeenCalledWith(2);
+    expect(vi.mocked(global.fetch).mock.calls).toHaveLength(2);
   });
 
   it("portrait start stores the current session id", async () => {
@@ -335,10 +462,14 @@ describe("topiclab cli", () => {
         session: {
           session_id: "pts_preview_123",
           status: "active",
-          current_stage: "dialogue",
+          current_stage: "skill_policy",
         },
-        stage: "dialogue",
+        stage: "skill_policy",
         input_kind: "text",
+        interactive_block: {
+          id: "ai_memory_reply",
+          type: "text_input",
+        },
       }),
     );
 
@@ -418,6 +549,65 @@ describe("topiclab cli", () => {
           artifact: {
             artifact_kind: "forum_profile_markdown",
           },
+        },
+      },
+    });
+  });
+
+  it("portrait respond forwards prompt-first external text replies through the unified route", async () => {
+    writeState(tmpHome, {
+      portrait_access_token: "portrait_jwt_token",
+      portrait_username: "portrait-preview-user",
+      portrait_user: { id: 42, username: "portrait-preview-user" },
+      portrait_current_session_id: "pts_preview_123",
+    });
+
+    const exitMock = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`exit:${code ?? 0}`);
+    });
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        session: {
+          session_id: "pts_preview_123",
+          status: "active",
+          current_stage: "skill_policy",
+        },
+        last_response: {
+          input_type: "external_text",
+          status: "imported",
+        },
+        runtime_refs: {
+          import_result: { ref_value: "pir_123" },
+        },
+      }),
+    );
+
+    await expect(
+      main([
+        "node",
+        "topiclab",
+        "portrait",
+        "respond",
+        "--external-text",
+        "A1: 博士生",
+        "--json",
+      ]),
+    ).rejects.toThrow("exit:0");
+
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(global.fetch).toHaveBeenCalledWith(
+      `${TEST_BASE_URL}/api/v1/portrait/sessions/pts_preview_123/respond`,
+      expect.anything(),
+    );
+    const [, options] = vi.mocked(global.fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toMatchObject({ external_text: "A1: 博士生" });
+    expect(JSON.parse(stdout)).toMatchObject({
+      last_response: {
+        input_type: "external_text",
+      },
+      runtime_refs: {
+        import_result: {
+          ref_value: "pir_123",
         },
       },
     });

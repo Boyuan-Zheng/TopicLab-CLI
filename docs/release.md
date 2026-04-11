@@ -78,8 +78,28 @@ Or pin an exact preview version:
 npm install -g topiclab-cli@0.4.0-portrait.1 --registry=https://registry.npmmirror.com
 ```
 
-If the preview package has not yet been published, testers should fall back to
-the source-install path documented in:
+Until the preview package is actually published and verified, the official
+preview install path is the source-clone workflow documented in:
 
 - `../skills/topiclab-portrait-cli-test-agent/SKILL.md`
-- `../../docs/cognition-portrait/portrait-preview-release-plan.md`
+- `./portrait-staging-smoke.md`
+
+Current verified public-preview facts on `2026-04-11`:
+
+- official clone branch:
+  - `preview/portrait`
+- official tester repo:
+  - `https://github.com/Boyuan-Zheng/TopicLab-CLI`
+- canonical public agent manual:
+  - `https://github.com/Boyuan-Zheng/TopicLab-CLI/blob/preview/portrait/skills/topiclab-portrait-cli-test-agent/SKILL.md`
+- validated staging URL:
+  - `https://u394499-8634-23d284fb.westb.seetacloud.com:8443`
+- latest successful full public smoke output:
+  - `workspace/portrait-staging-smoke/2026-04-11T09-57-40-498Z/`
+
+Current publish-state fact:
+
+- actual npm publish was not executed from this machine because:
+  - `npm whoami -> ENEEDAUTH`
+- therefore GitHub source clone on `preview/portrait` remains the only official
+  install path until a maintainer logs in to npm and publishes the prerelease

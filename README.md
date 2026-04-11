@@ -33,6 +33,9 @@ Upgrade:
 npm update -g topiclab-cli --registry=https://registry.npmmirror.com
 ```
 
+For the portrait preview lane, the official install method is currently the
+GitHub source-clone path on `preview/portrait`, not the npm package.
+
 ## Development
 
 ```bash
@@ -43,20 +46,26 @@ npm test
 
 ## Portrait Preview (Staging)
 
-The new portrait product is currently validated through the checked-out
-`topiclab-cli` repository build talking to the cloud staging backend over
-HTTPS.
+Official preview install method:
+
+- clone the `preview/portrait` branch from GitHub
+- build locally
+- talk to the cloud staging backend over HTTPS
+
+Do not assume the public npm package already contains the latest portrait
+surface unless the maintainers have explicitly published and verified it.
 
 Quick start:
 
 ```bash
-cd /absolute/path/to/topiclab-cli
+git clone --branch preview/portrait https://github.com/Boyuan-Zheng/TopicLab-CLI.git
+cd TopicLab-CLI
 npm install
 npm run portrait:preview:bootstrap
 source ./.topiclab-cli-home/portrait-preview.env
 node dist/cli.js portrait auth ensure --phone <your_phone> --username <your_username> --password '<your_password>' --json
 node dist/cli.js portrait start --mode legacy_product --actor-type internal --actor-id <your_agent_id> --json
-node dist/cli.js portrait respond --choice direct --json
+node dist/cli.js portrait respond --external-text-file ./ai-memory-reply.md --json
 ```
 
 What the bootstrap helper now prepares:
@@ -75,17 +84,51 @@ The installation is local, but the runtime is cloud-backed:
 - portrait sessions, state, logs, and execution records live on the staging
   backend
 
+Current auth rule:
+
+- `topiclab portrait auth ensure` is the single register-or-login command
+- if the account already exists, the CLI logs in directly
+- if login fails and self-registration is allowed on staging, the CLI can
+  auto-register and persist the returned token directly
+- the current public staging URL was re-verified on `2026-04-11` and now
+  exposes the required auth routes for self-registration
+- the CLI will auto-register with `--phone --username --password` only when
+  the public staging backend exposes:
+  - `GET /api/v1/auth/register-config`
+  - `POST /api/v1/auth/register`
+- if you receive `404 No route for GET /api/v1/auth/register-config`, treat it
+  as a staging deployment regression, not a normal expected state
+
 Current portrait-loop rule:
 
-- default first move after `portrait start --mode legacy_product`:
-  - `portrait respond --choice direct`
-- keep collecting portrait data through repeated `portrait respond --text ...`
-- only use the explicit prompt/import path if direct dialogue still yields too
-  little information
+- `portrait start --mode legacy_product` now returns the prompt-first
+  `ai_memory` step directly
+- the same CLI-using agent should read that prompt and answer it itself
+- prefer `portrait respond --external-text` or
+  `portrait respond --external-text-file` for that first long reply
+- after the prompt-first import, keep following the server-driven next step
+  through repeated `portrait respond ...`
 
 The single canonical in-repo skill for agents is:
 
 - `./skills/topiclab-portrait-cli-test-agent/SKILL.md`
+
+The public staging smoke script is:
+
+- `npm run smoke:portrait:staging`
+
+The public staging smoke record is:
+
+- `./docs/portrait-staging-smoke.md`
+
+Latest validated public smoke:
+
+- date:
+  - `2026-04-11`
+- staging URL:
+  - `https://u394499-8634-23d284fb.westb.seetacloud.com:8443`
+- latest successful full smoke output:
+  - `./workspace/portrait-staging-smoke/2026-04-11T09-57-40-498Z/`
 
 ## Optional Environment
 
