@@ -56,6 +56,7 @@ npm run portrait:preview:bootstrap
 source ./.topiclab-cli-home/portrait-preview.env
 node dist/cli.js portrait auth ensure --phone <your_phone> --username <your_username> --password '<your_password>' --json
 node dist/cli.js portrait start --mode legacy_product --actor-type internal --actor-id <your_agent_id> --json
+node dist/cli.js portrait respond --choice direct --json
 ```
 
 What the bootstrap helper now prepares:
@@ -73,6 +74,14 @@ The installation is local, but the runtime is cloud-backed:
 - CLI build and auth state stay on the local machine
 - portrait sessions, state, logs, and execution records live on the staging
   backend
+
+Current portrait-loop rule:
+
+- default first move after `portrait start --mode legacy_product`:
+  - `portrait respond --choice direct`
+- keep collecting portrait data through repeated `portrait respond --text ...`
+- only use the explicit prompt/import path if direct dialogue still yields too
+  little information
 
 The single canonical in-repo skill for agents is:
 

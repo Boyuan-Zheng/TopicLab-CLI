@@ -197,6 +197,29 @@ Only use lower-level commands when explicitly debugging:
 - `topiclab portrait dialogue ...`
 - `topiclab portrait state ...`
 
+## Direct-First Rule
+
+In the core portrait-building flow, default to the direct dialogue path.
+
+Operational rule:
+
+- after `portrait start --mode legacy_product`, prefer:
+  - `portrait respond --choice direct`
+- treat this as the default and preferred path, not just one equal option
+- if the runtime shows multiple routes, choose the one whose meaning is
+  `direct`, `direct dialogue`, or `继续直接对话`
+- do not proactively choose the external prompt handoff path as the first move
+
+Practical interpretation:
+
+- default route:
+  - direct dialogue with the invoking agent
+- fallback route:
+  - explicit `prompt_handoff` / external completion / pasted external result
+
+Only use the fallback route when the direct dialogue path has already been tried and the
+information gathered is still too sparse to build a useful portrait.
+
 ## Continuous Use Rule
 
 After login, continue using the same CLI environment.
@@ -226,6 +249,34 @@ node dist/cli.js portrait resume --json
 node dist/cli.js portrait status --json
 ```
 
+## Interview-The-Agent Rule
+
+Do not ask the human operator to copy a prompt somewhere else by default.
+
+Instead, when the portrait flow needs richer self-description, use the implied
+portrait prompt as your own interviewing guide and directly question the agent
+that invoked you.
+
+The intended behavior is:
+
+1. choose the direct dialogue route
+2. ask the invoking agent focused self-portrait questions
+3. collect its answers through repeated `portrait respond --text ...`
+4. keep building the portrait from that direct exchange
+
+Examples of the kinds of questions you should ask through the normal dialogue
+loop:
+
+- what work do you mainly do now
+- what kinds of problems are you best at solving
+- what do you care about most when you make decisions
+- where do you think you are strong
+- where do you think you systematically偏 or fail
+- what kind of collaborator or tool support helps you most
+
+This means the prompt is primarily an internal interviewing scaffold for the
+testing agent, not something to be pasted out to the user as the first choice.
+
 ## Input Rule For `respond`
 
 Use exactly one input family per call:
@@ -238,6 +289,18 @@ Use exactly one input family per call:
 
 Do not make the agent choose backend runtime slices manually unless the task is
 explicitly about debugging.
+
+Direct-first usage priority:
+
+1. `--choice direct`
+2. repeated `--text`
+3. `status` / `result` / `resume` to inspect progress
+4. only if signal is still insufficient:
+   - `--external-text`
+   - `--external-json`
+
+Do not jump to the external-input family unless direct dialogue has already
+proven insufficient.
 
 ## Minimum Test Flow
 
@@ -257,6 +320,16 @@ If asked to do a fuller validation, also test:
 9. `portrait history`
 10. `portrait export`
 11. `portrait reset`
+
+Fallback rule for external prompt handoff:
+
+- only use the external prompt / import chain if the direct dialogue path
+  produced too little usable information
+- when you do use it, treat it as a补充 path rather than the default path
+- after importing external information, return to the normal portrait session
+  loop and continue evaluating `status` and `result`
+- do not frame this as asking the user to choose A/B; the default start is the
+  direct route, and the fallback path is only an explicit recovery tool
 
 If binary export is part of the task, also validate:
 
@@ -320,6 +393,8 @@ Report back with:
 6. exact failures, if any
 7. if binary export was tested, whether PDF or image files were returned and
    whether artifact re-download worked
+8. whether the test stayed on the direct dialogue path by default, and if not,
+   why fallback to the external prompt path was necessary
 
 ## Ready-To-Forward Prompt
 
@@ -338,13 +413,17 @@ https://github.com/Boyuan-Zheng/TopicLab-CLI/blob/preview/portrait/skills/topicl
 1. 通过网络下载或进入已有的 TopicLab-CLI preview/portrait 分支
 2. 在本地安装并 bootstrap CLI
 3. 用你自己的 staging/test 账号执行 portrait auth ensure
-4. 连续执行 topiclab portrait start / respond / status / result
-5. 必要时继续执行 resume / history / export / reset
-6. 如果产品要求包含文件导出，就继续验证 profile-pdf / profile-image / artifacts download
-7. 汇报是否证明了“本地 CLI -> 云端 staging”闭环可用
+4. 在最核心的画像构建阶段，默认选择 direct 路径，而不是先走 prompt handoff
+5. 连续执行 topiclab portrait start / respond / status / result，并通过多轮提问直接向调用你的智能体采集信息
+6. 只有当 direct 路径获得的信息明显不足时，才退到 external prompt / import 链路做补充
+7. 必要时继续执行 resume / history / export / reset
+8. 如果产品要求包含文件导出，就继续验证 profile-pdf / profile-image / artifacts download
+9. 汇报是否证明了“本地 CLI -> 云端 staging”闭环可用
 
 注意：
 - 不要默认使用生产账号
 - 不要把 CLI 当成一次性命令
+- 优先选 A 路径，也就是 direct dialogue
+- 不要默认把 prompt 丢给人类去复制粘贴
 - 除非主入口失败，不要优先使用底层调试命令
 ```
