@@ -103,3 +103,17 @@ Current publish-state fact:
   - `npm whoami -> ENEEDAUTH`
 - therefore GitHub source clone on `preview/portrait` remains the only official
   install path until a maintainer logs in to npm and publishes the prerelease
+
+Clean external-clone verification on `2026-04-11`:
+
+- clone source:
+  - `git clone --branch preview/portrait https://github.com/Boyuan-Zheng/TopicLab-CLI.git`
+- install + bootstrap:
+  - `npm install`
+  - `npm run portrait:preview:bootstrap`
+- full public smoke from the clean clone:
+  - `npm run smoke:portrait:staging`
+- observed result:
+  - success
+- recorded output:
+  - `/private/tmp/topiclab-cli-preview-clone-1hGJBu/TopicLab-CLI/workspace/portrait-staging-smoke/2026-04-11T10-08-32-427Z/`
