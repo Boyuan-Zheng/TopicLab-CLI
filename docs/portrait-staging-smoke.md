@@ -34,6 +34,14 @@ Expected public routes for the minimal agent loop:
 - `GET /api/v1/portrait/sessions/{session_id}`
 - `GET /api/v1/portrait/sessions/{session_id}/result`
 
+Important probe note:
+
+- do not use `GET /api/v1/portrait/sessions` as a route-presence probe
+- the current unified portrait session surface exposes `POST /api/v1/portrait/sessions`
+  for create and per-session `GET` routes after a session exists
+- maintainer smoke therefore probes portrait-route presence with `POST /api/v1/portrait/sessions`
+  and treats any non-`404` status as "route exists"
+
 ## Smoke Script
 
 Run from the checked-out `topiclab-cli` repo:
@@ -115,9 +123,9 @@ If the smoke fails, use this triage order:
    - meaning: local state lost the active session id; run `portrait resume` or
      `portrait start`
 
-## 2026-04-11 Maintainer Probe Record
+## 2026-04-11 Early Probe Record
 
-The maintainer directly probed the current public staging URL and observed:
+The maintainer first directly probed the public staging URL and observed:
 
 ```http
 GET /health
@@ -140,7 +148,7 @@ Recorded output directory from this run:
 
 - `workspace/portrait-staging-smoke/2026-04-11T08-32-20-375Z/`
 
-Initial interpretation:
+Initial interpretation at that time:
 
 - the CLI code path for register-or-login is already implemented
 - the current public staging deployment is not exposing:
@@ -150,8 +158,8 @@ Initial interpretation:
 - therefore agents cannot yet self-register or start portrait sessions on this
   public URL until staging is updated
 
-At that moment this was a deployment exposure issue, not a local CLI packaging
-issue.
+At that moment this looked like a deployment exposure issue, not a local CLI
+packaging issue.
 
 ## 2026-04-11 Remote Deployment Diagnosis
 
@@ -238,6 +246,93 @@ Post-repair server facts:
   - `GET /health -> 200`
 - public auth preflight:
   - `GET /api/v1/auth/register-config -> 200`
+
+This record captured the first repair attempt, but it was not the final stable
+topology.
+
+## 2026-04-11 Final Recovery Record
+
+The final stable AutoDL staging topology on 2026-04-11 is:
+
+- `127.0.0.1:6006`
+  - process:
+    - `python3 /home/gmk/tashan-world-0406/scripts/tashan-world-account-service.py`
+  - role:
+    - keeps the legacy `/v1/*` Tashan World access surface
+    - reverse-proxies TopicLab portrait routes to `127.0.0.1:18000`
+- `0.0.0.0:6008`
+  - process:
+    - `openclaw-gateway`
+  - role:
+    - existing cloud gateway, left untouched
+- `0.0.0.0:18000`
+  - process:
+    - `python -m uvicorn main:app --host 0.0.0.0 --port 18000`
+  - role:
+    - actual TopicLab portrait backend
+
+Compatibility fix performed on the same day:
+
+1. patched `/home/gmk/tashan-world-0406/scripts/tashan-world-account-service.py`
+   so the public `6006` entry now proxies:
+   - `/health`
+   - `/api/v1/auth/*`
+   - `/api/v1/portrait/*`
+   - `/api/v1/profile-helper/*`
+   to `http://127.0.0.1:18000`
+2. kept legacy `/v1/*` account-service routes untouched
+3. left `6008` untouched
+
+Second real blocker discovered during validation:
+
+- `POST /api/v1/auth/register` returned `500`
+- root cause from `topiclab_backend_18000.log`:
+  - `sqlite3.OperationalError: attempt to write a readonly database`
+- practical recovery:
+  - explicitly restarted the `18000` uvicorn backend with `TOPICLAB_STAGING_PORT=18000`
+  - after restart, registration and login returned `200` again
+
+Final verified public route state after recovery:
+
+- `GET /health -> 200`
+- `GET /api/v1/auth/register-config -> 200`
+- `POST /api/v1/auth/register -> 200`
+- `POST /api/v1/auth/login -> 200`
+
+Final verified CLI state after recovery:
+
+- `topiclab portrait auth ensure`:
+  - self-registration succeeded against the public staging URL
+- `topiclab portrait start --mode legacy_product`:
+  - returned the prompt-first `ai_memory` step
+  - returned the full long-form AI memory extraction prompt
+  - did not require an extra `A/B` selection step
+- `npm run smoke:portrait:staging`:
+  - completed successfully against the public staging URL
+  - recorded output directory:
+    - `workspace/portrait-staging-smoke/2026-04-11T10-47-10-977Z`
+  - verified:
+    - `auth ensure`
+    - `start`
+    - prompt-first `ai_memory` reply import
+    - server-driven follow-up loop
+    - `status`
+    - `result`
+    - `history`
+    - `export --kind profile-markdown`
+    - `artifacts list`
+
+Operational pitfall discovered:
+
+- `/root/topiclab-portrait-staging/topiclab-backend/scripts/portrait_staging_service.sh`
+  defaults to port `6006`
+- if maintainers use it without overriding `TOPICLAB_STAGING_PORT`, it can
+  accidentally stop the `6006` compatibility shell instead of the real
+  `18000` portrait backend
+- for the current staging host, always manage the portrait backend with:
+  - `TOPICLAB_STAGING_PORT=18000`
+  - `TOPICLAB_STAGING_HOST=0.0.0.0`
+  - explicit `TOPICLAB_PID_FILE`, `TOPICLAB_LOG_FILE`, and `TOPICLAB_HEALTH_URL`
 - public unified portrait entry:
   - `GET /api/v1/portrait/sessions -> 401`
   - this is the expected unauthenticated response

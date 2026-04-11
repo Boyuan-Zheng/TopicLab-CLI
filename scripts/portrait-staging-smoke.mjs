@@ -252,7 +252,14 @@ async function main() {
   const probes = {
     health: await probeRoute("/health"),
     register_config: await probeRoute("/api/v1/auth/register-config"),
-    portrait_sessions: await probeRoute("/api/v1/portrait/sessions"),
+    portrait_session_create: await probeRoute("/api/v1/portrait/sessions", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    }),
   };
   writeJson("route-probes.json", probes);
 
@@ -266,7 +273,11 @@ async function main() {
   };
 
   if (probeOnly) {
-    summary.ok = Boolean(probes.health.ok || probes.register_config.ok || probes.portrait_sessions.ok);
+    summary.ok = Boolean(
+      probes.health.ok ||
+        probes.register_config.ok ||
+        (typeof probes.portrait_session_create.status === "number" && probes.portrait_session_create.status !== 404),
+    );
     summary.failure_reason = summary.ok ? null : "probe_only_no_expected_route";
     writeJson("summary.json", summary);
     log(`probe_only_complete output_root=${outputRoot}`);
@@ -280,7 +291,7 @@ async function main() {
     process.exit(2);
   }
 
-  if (probes.portrait_sessions.status === 404) {
+  if (probes.portrait_session_create.status === 404) {
     summary.failure_reason = "public_staging_missing_portrait_routes";
     writeJson("summary.json", summary);
     log(`public staging is missing /api/v1/portrait/sessions; see ${outputRoot}`);
